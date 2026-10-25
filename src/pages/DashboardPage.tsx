@@ -116,6 +116,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onSelectTab }) => 
 
   useEffect(() => {
     loadData();
+
+    const handleRealtime = () => {
+      loadData();
+    };
+    window.addEventListener('app:realtime-refresh', handleRealtime);
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('app:realtime-refresh', handleRealtime);
+      clearInterval(interval);
+    };
   }, [role]);
 
   // If user is ADMIN, render the Admin Monitoring & Verification View directly

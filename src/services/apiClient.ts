@@ -1,15 +1,35 @@
 /**
  * API Client for Google Apps Script (GAS) & Google Sheets Backend
- * Privately configured via environment variables / GitHub Secrets.
- * URL is completely hidden from the user interface for database security.
+ * Mendukung akses multi-device (Desktop, Tablet, Ponsel) & sinkronisasi data realtime.
+ * URL terproteksi dan disembunyikan dari antarmuka demi keamanan basis data sekolah.
  */
 
-// URL diinjeksikan secara aman saat proses build melalui GitHub Secrets (VITE_GAS_API_URL)
-// atau berkas .env lokal pengembang, sehingga tidak terekspos di antarmuka web.
+import { memoryCache } from './cacheService';
+
+// 1. Prioritas Utama: URL diinjeksikan saat proses build melalui GitHub Secrets (VITE_GAS_API_URL)
 const RAW_ENV_URL = ((import.meta as any).env?.VITE_GAS_API_URL || '').trim();
 
-// Fallback lokal jika tersimpan sebelumnya
+// 2. Fallback Storage untuk perangkat lokal / konfigurasi privat
 const STORAGE_KEY_GAS_URL = 'admin_guru_gas_url';
+
+// 3. Otomatis tangkap tautan konfigurasi satu-kali (jika dibuka dari tautan privat di HP)
+if (typeof window !== 'undefined') {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const directUrl = urlParams.get('db_url') || urlParams.get('gas_url');
+    if (directUrl && directUrl.startsWith('https://script.google.com/macros/s/')) {
+      localStorage.setItem(STORAGE_KEY_GAS_URL, directUrl.trim());
+      // Bersihkan parameter dari address bar demi privasi
+      urlParams.delete('db_url');
+      urlParams.delete('gas_url');
+      const cleanSearch = urlParams.toString();
+      const newUrl = window.location.pathname + (cleanSearch ? '?' + cleanSearch : '') + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+  } catch (e) {
+    // Abaikan jika env bukan browser standar
+  }
+}
 
 export interface GasApiResponse<T = any> {
   success: boolean;
@@ -49,7 +69,9 @@ export const apiClient = {
   },
 
   /**
-   * Melakukan request GET ke Google Apps Script
+   * Melakukan request GET ke Google Apps Script secara REALTIME
+   * Ditambahkan parameter timestamp (_t) & cache: 'no-store' agar selalu memperoleh
+   * data mutakhir dari Google Sheets tanpa terkena browser cache di berbagai device.
    */
   async get<T = any>(action: string, params: Record<string, string | number | boolean | undefined> = {}): Promise<T> {
     const baseUrl = this.getGasUrl();
@@ -61,6 +83,9 @@ export const apiClient = {
 
     const urlObj = new URL(baseUrl);
     urlObj.searchParams.set('action', action);
+    // Anti-cache timestamp untuk kepastian data realtime
+    urlObj.searchParams.set('_t', String(Date.now()));
+
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null) {
         urlObj.searchParams.set(k, String(v));
@@ -71,6 +96,7 @@ export const apiClient = {
       const res = await fetch(urlObj.toString(), {
         method: 'GET',
         redirect: 'follow',
+        cache: 'no-store', // Mencegah caching browser di HP maupun Desktop
       });
 
       if (!res.ok) {
@@ -91,7 +117,7 @@ export const apiClient = {
 
   /**
    * Melakukan request POST ke Google Apps Script
-   * Menggunakan text/plain agar browser tidak mengirim request OPTIONS yang tidak didukung oleh GAS
+   * Otomatis memicu pembersihan cache & siaran realtime ke tab/perangkat lain saat operasi berhasil.
    */
   async post<T = any>(payload: Record<string, any>): Promise<GasApiResponse<T>> {
     const baseUrl = this.getGasUrl();
@@ -105,6 +131,7 @@ export const apiClient = {
       const res = await fetch(baseUrl, {
         method: 'POST',
         redirect: 'follow',
+        cache: 'no-store',
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
@@ -118,6 +145,13 @@ export const apiClient = {
       const json: GasApiResponse<T> = await res.json();
       if (!json.success) {
         throw new Error(json.error || 'Permintaan ke database gagal diproses.');
+      }
+
+      // Siarkan perubahan data realtime ke memori lokal & tab lain
+      if (payload.table) {
+        memoryCache.broadcastChange(payload.table, payload.action || 'post');
+      } else {
+        memoryCache.invalidate();
       }
 
       return json;

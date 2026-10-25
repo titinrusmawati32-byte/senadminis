@@ -134,6 +134,24 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
   useEffect(() => {
     loadData();
+
+    // Sinkronisasi realtime saat pengguna kembali ke tab / ada perubahan data
+    const handleRealtime = () => {
+      loadData();
+    };
+    window.addEventListener('app:realtime-refresh', handleRealtime);
+
+    // Polling periodik (setiap 25 detik jika tab aktif) untuk sinkronisasi antar perangkat (HP & Laptop)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    }, 25000);
+
+    return () => {
+      window.removeEventListener('app:realtime-refresh', handleRealtime);
+      clearInterval(interval);
+    };
   }, []);
 
   // Grouped SD Classes (Kelas 1 SD s/d Kelas 6 SD)
