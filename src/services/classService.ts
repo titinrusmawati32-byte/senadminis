@@ -3,10 +3,10 @@ import { apiClient } from './apiClient';
 import { memoryCache } from './cacheService';
 
 export const sortSDClasses = (a: SchoolClass, b: SchoolClass): number => {
-  const nameA = a?.name || a?.classId || '';
-  const nameB = b?.name || b?.classId || '';
-  const gradeA = parseInt(a?.grade || nameA.replace(/\D/g, ''), 10) || 0;
-  const gradeB = parseInt(b?.grade || nameB.replace(/\D/g, ''), 10) || 0;
+  const nameA = String(a?.name || a?.classId || '');
+  const nameB = String(b?.name || b?.classId || '');
+  const gradeA = parseInt(String(a?.grade || nameA.replace(/\D/g, '')), 10) || 0;
+  const gradeB = parseInt(String(b?.grade || nameB.replace(/\D/g, '')), 10) || 0;
   if (gradeA !== gradeB) return gradeA - gradeB;
   return nameA.localeCompare(nameB, undefined, { numeric: true });
 };
@@ -23,8 +23,8 @@ export const groupClassesBySDGrade = (classes: SchoolClass[]): { grade: string; 
 
   (classes || []).forEach((cls) => {
     if (!cls) return;
-    const nameStr = cls.name || cls.classId || '';
-    const rawGrade = (cls.grade || nameStr.replace(/\D/g, '') || '1').trim();
+    const nameStr = String(cls.name || cls.classId || '');
+    const rawGrade = String(cls.grade || nameStr.replace(/\D/g, '') || '1').trim();
     if (!gradeMap[rawGrade]) {
       gradeMap[rawGrade] = [];
     }

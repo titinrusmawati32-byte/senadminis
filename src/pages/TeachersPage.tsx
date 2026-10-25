@@ -177,15 +177,15 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     const list = classes || [];
     if (matrixGradeFilter === 'all') return list;
     if (matrixGradeFilter === 'fase-a') {
-      return list.filter((c) => ['1', '2'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')));
+      return list.filter((c) => ['1', '2'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))));
     }
     if (matrixGradeFilter === 'fase-b') {
-      return list.filter((c) => ['3', '4'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')));
+      return list.filter((c) => ['3', '4'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))));
     }
     if (matrixGradeFilter === 'fase-c') {
-      return list.filter((c) => ['5', '6'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')));
+      return list.filter((c) => ['5', '6'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))));
     }
-    return list.filter((c) => (c.grade || (c.name ? c.name.replace(/\D/g, '') : '')) === matrixGradeFilter);
+    return list.filter((c) => String(c.grade || String(c.name || '').replace(/\D/g, '')) === matrixGradeFilter);
   }, [classes, matrixGradeFilter]);
 
   // Statistics
@@ -253,8 +253,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     setFormData((prev) => ({
       ...prev,
       assignedClasses: (classes || [])
-        .filter((c) => ['1', '2'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
-        .map((c) => c.name),
+        .filter((c) => ['1', '2'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))))
+        .map((c) => String(c.name || c.classId)),
     }));
   };
 
@@ -262,8 +262,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     setFormData((prev) => ({
       ...prev,
       assignedClasses: (classes || [])
-        .filter((c) => ['3', '4'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
-        .map((c) => c.name),
+        .filter((c) => ['3', '4'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))))
+        .map((c) => String(c.name || c.classId)),
     }));
   };
 
@@ -271,8 +271,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     setFormData((prev) => ({
       ...prev,
       assignedClasses: (classes || [])
-        .filter((c) => ['5', '6'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
-        .map((c) => c.name),
+        .filter((c) => ['5', '6'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))))
+        .map((c) => String(c.name || c.classId)),
     }));
   };
 
@@ -799,8 +799,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
           {/* Rombel Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredMatrixClasses.map((cls) => {
-              const nameStr = cls.name || cls.classId || '';
-              const gradeNum = cls.grade || nameStr.replace(/\D/g, '') || '1';
+              const nameStr = String(cls.name || cls.classId || '');
+              const gradeNum = String(cls.grade || nameStr.replace(/\D/g, '') || '1');
               const fase =
                 gradeNum === '1' || gradeNum === '2'
                   ? 'Fase A'
@@ -853,7 +853,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                       {homeroomTeacher ? (
                         <div className="flex items-center gap-2 mt-1">
                           <div className="w-6 h-6 rounded-lg bg-amber-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                            {(homeroomTeacher.displayName || 'G').charAt(0)}
+                            {String(homeroomTeacher.displayName || 'G').charAt(0)}
                           </div>
                           <div className="truncate">
                             <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
@@ -1009,7 +1009,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                           <td className="py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs">
-                                {(teacher.displayName || 'G').charAt(0)}
+                                {String(teacher.displayName || 'G').charAt(0)}
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1556,8 +1556,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                   setQuickRombelData((prev) => ({
                     ...prev,
                     assignedClasses: (classes || [])
-                      .filter((c) => ['1', '2'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
-                      .map((c) => c.name),
+                      .filter((c) => ['1', '2'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))))
+                      .map((c) => String(c.name || c.classId)),
                   }))
                 }
                 className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-medium cursor-pointer"
@@ -1570,8 +1570,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                   setQuickRombelData((prev) => ({
                     ...prev,
                     assignedClasses: (classes || [])
-                      .filter((c) => ['3', '4'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
-                      .map((c) => c.name),
+                      .filter((c) => ['3', '4'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))))
+                      .map((c) => String(c.name || c.classId)),
                   }))
                 }
                 className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-medium cursor-pointer"
@@ -1584,8 +1584,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                   setQuickRombelData((prev) => ({
                     ...prev,
                     assignedClasses: (classes || [])
-                      .filter((c) => ['5', '6'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
-                      .map((c) => c.name),
+                      .filter((c) => ['5', '6'].includes(String(c.grade || String(c.name || '').replace(/\D/g, ''))))
+                      .map((c) => String(c.name || c.classId)),
                   }))
                 }
                 className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 font-medium cursor-pointer"

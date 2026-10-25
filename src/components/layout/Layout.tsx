@@ -1,6 +1,7 @@
 import React, { Suspense, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
+import { ErrorBoundary } from '../common/ErrorBoundary';
 import { PageLoadingFallback } from '../common/Skeleton';
 import { BottomNav } from './BottomNav';
 import { Header } from './Header';
@@ -117,11 +118,13 @@ export const Layout: React.FC = () => {
           onSelectTab={setActiveTab}
         />
 
-        {/* Scrollable Main Content with Suspense */}
+        {/* Scrollable Main Content with Suspense & ErrorBoundary */}
         <main className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 pb-24 lg:pb-8">
-          <Suspense fallback={<PageLoadingFallback />}>
-            {renderActiveContent()}
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<PageLoadingFallback />}>
+              {renderActiveContent()}
+            </Suspense>
+          </ErrorBoundary>
         </main>
 
         {/* Mobile Bottom Navigation */}
