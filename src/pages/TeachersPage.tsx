@@ -40,7 +40,7 @@ import { ActiveTab } from '../components/layout/Sidebar';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { auditService } from '../services/auditService';
-import { authService } from '../services/authService';
+import { authService, ensureArray } from '../services/authService';
 import { classService, groupClassesBySDGrade } from '../services/classService';
 import { reportService } from '../services/reportService';
 import { scheduleService } from '../services/scheduleService';
@@ -120,12 +120,13 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
         subjectService.getAll(),
         scheduleService.getAll(),
       ]);
-      setTeachers(tch);
-      setClasses(cls);
-      setSubjects(sub);
-      setSchedules(sch);
+      setTeachers(tch || []);
+      setClasses(cls || []);
+      setSubjects(sub || []);
+      setSchedules(sch || []);
     } catch (err: any) {
-      showToast('Gagal memuat data guru: ' + err.message, 'error');
+      console.error('Error loading teachers:', err);
+      showToast('Gagal memuat data guru: ' + (err.message || String(err)), 'error');
     } finally {
       setLoading(false);
     }
@@ -137,17 +138,25 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
   // Grouped SD Classes (Kelas 1 SD s/d Kelas 6 SD)
   const groupedSDClasses = useMemo(() => {
-    return groupClassesBySDGrade(classes);
+    return groupClassesBySDGrade(classes || []);
   }, [classes]);
 
   // Filtered Teachers
   const filteredTeachers = useMemo(() => {
-    return teachers.filter((t) => {
+    return (teachers || []).filter((t) => {
+      if (!t) return false;
+      const displayName = String(t.displayName || '');
+      const username = String(t.username || '');
+      const nip = String(t.nip || '');
+      const email = String(t.email || '');
+      const search = (searchTerm || '').trim().toLowerCase();
+
       const matchSearch =
-        t.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (t.nip && t.nip.includes(searchTerm)) ||
-        (t.email && t.email.toLowerCase().includes(searchTerm.toLowerCase()));
+        !search ||
+        displayName.toLowerCase().includes(search) ||
+        username.toLowerCase().includes(search) ||
+        nip.includes(search) ||
+        email.toLowerCase().includes(search);
 
       const matchStatus =
         statusFilter === 'all' ||
@@ -156,7 +165,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
       const matchRole =
         roleFilter === 'all' ||
-        (roleFilter === 'homeroom' && t.isHomeroom) ||
+        (roleFilter === 'homeroom' && Boolean(t.isHomeroom)) ||
         (roleFilter === 'subject' && !t.isHomeroom);
 
       return matchSearch && matchStatus && matchRole;
@@ -165,23 +174,24 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
   // Filtered Classes for Matrix View
   const filteredMatrixClasses = useMemo(() => {
-    if (matrixGradeFilter === 'all') return classes;
+    const list = classes || [];
+    if (matrixGradeFilter === 'all') return list;
     if (matrixGradeFilter === 'fase-a') {
-      return classes.filter((c) => ['1', '2'].includes(c.grade || c.name.replace(/\D/g, '')));
+      return list.filter((c) => ['1', '2'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')));
     }
     if (matrixGradeFilter === 'fase-b') {
-      return classes.filter((c) => ['3', '4'].includes(c.grade || c.name.replace(/\D/g, '')));
+      return list.filter((c) => ['3', '4'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')));
     }
     if (matrixGradeFilter === 'fase-c') {
-      return classes.filter((c) => ['5', '6'].includes(c.grade || c.name.replace(/\D/g, '')));
+      return list.filter((c) => ['5', '6'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')));
     }
-    return classes.filter((c) => (c.grade || c.name.replace(/\D/g, '')) === matrixGradeFilter);
+    return list.filter((c) => (c.grade || (c.name ? c.name.replace(/\D/g, '') : '')) === matrixGradeFilter);
   }, [classes, matrixGradeFilter]);
 
   // Statistics
-  const totalGuru = teachers.length;
-  const activeCount = teachers.filter((t) => t.status === 'active').length;
-  const homeroomCount = teachers.filter((t) => t.isHomeroom).length;
+  const totalGuru = (teachers || []).length;
+  const activeCount = (teachers || []).filter((t) => t?.status === 'active').length;
+  const homeroomCount = (teachers || []).filter((t) => Boolean(t?.isHomeroom)).length;
 
   const handleOpenAdd = () => {
     setEditingTeacher(null);
@@ -204,14 +214,14 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
   const handleOpenEdit = (t: UserProfile) => {
     setEditingTeacher(t);
     setFormData({
-      username: t.username,
-      displayName: t.displayName,
+      username: t.username || '',
+      displayName: t.displayName || '',
       password: '',
       nip: t.nip || '',
       phone: t.phone || '',
       email: t.email || '',
-      assignedClasses: t.assignedClasses || [],
-      assignedSubjects: t.assignedSubjects || [],
+      assignedClasses: ensureArray(t.assignedClasses),
+      assignedSubjects: ensureArray(t.assignedSubjects),
       isHomeroom: Boolean(t.isHomeroom),
       homeroomClass: t.homeroomClass || classes[0]?.name || '',
       status: t.status || 'active',
@@ -221,12 +231,13 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
   const handleToggleClass = (className: string) => {
     setFormData((prev) => {
-      const exists = prev.assignedClasses.includes(className);
+      const current = ensureArray(prev.assignedClasses);
+      const exists = current.includes(className);
       return {
         ...prev,
         assignedClasses: exists
-          ? prev.assignedClasses.filter((c) => c !== className)
-          : [...prev.assignedClasses, className],
+          ? current.filter((c) => c !== className)
+          : [...current, className],
       };
     });
   };
@@ -234,15 +245,15 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
   const handleSelectAllSDClasses = () => {
     setFormData((prev) => ({
       ...prev,
-      assignedClasses: classes.map((c) => c.name),
+      assignedClasses: (classes || []).map((c) => c.name || c.classId),
     }));
   };
 
   const handleSelectFaseA = () => {
     setFormData((prev) => ({
       ...prev,
-      assignedClasses: classes
-        .filter((c) => ['1', '2'].includes(c.grade || c.name.replace(/\D/g, '')))
+      assignedClasses: (classes || [])
+        .filter((c) => ['1', '2'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
         .map((c) => c.name),
     }));
   };
@@ -250,8 +261,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
   const handleSelectFaseB = () => {
     setFormData((prev) => ({
       ...prev,
-      assignedClasses: classes
-        .filter((c) => ['3', '4'].includes(c.grade || c.name.replace(/\D/g, '')))
+      assignedClasses: (classes || [])
+        .filter((c) => ['3', '4'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
         .map((c) => c.name),
     }));
   };
@@ -259,18 +270,19 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
   const handleSelectFaseC = () => {
     setFormData((prev) => ({
       ...prev,
-      assignedClasses: classes
-        .filter((c) => ['5', '6'].includes(c.grade || c.name.replace(/\D/g, '')))
+      assignedClasses: (classes || [])
+        .filter((c) => ['5', '6'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
         .map((c) => c.name),
     }));
   };
 
   const handleToggleGradeGroup = (classNames: string[]) => {
     setFormData((prev) => {
-      const allSelected = classNames.every((c) => prev.assignedClasses.includes(c));
+      const current = ensureArray(prev.assignedClasses);
+      const allSelected = classNames.every((c) => current.includes(c));
       const nextClasses = allSelected
-        ? prev.assignedClasses.filter((c) => !classNames.includes(c))
-        : Array.from(new Set([...prev.assignedClasses, ...classNames]));
+        ? current.filter((c) => !classNames.includes(c))
+        : Array.from(new Set([...current, ...classNames]));
       return { ...prev, assignedClasses: nextClasses };
     });
   };
@@ -286,7 +298,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
   const handleOpenQuickRombel = (teacher: UserProfile) => {
     setQuickRombelTeacher(teacher);
     setQuickRombelData({
-      assignedClasses: teacher.assignedClasses || [],
+      assignedClasses: ensureArray(teacher.assignedClasses),
       isHomeroom: Boolean(teacher.isHomeroom),
       homeroomClass: teacher.homeroomClass || classes[0]?.name || '',
     });
@@ -295,22 +307,24 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
   const handleToggleQuickRombelClass = (className: string) => {
     setQuickRombelData((prev) => {
-      const exists = prev.assignedClasses.includes(className);
+      const current = ensureArray(prev.assignedClasses);
+      const exists = current.includes(className);
       return {
         ...prev,
         assignedClasses: exists
-          ? prev.assignedClasses.filter((c) => c !== className)
-          : [...prev.assignedClasses, className],
+          ? current.filter((c) => c !== className)
+          : [...current, className],
       };
     });
   };
 
   const handleToggleQuickRombelGrade = (classNames: string[]) => {
     setQuickRombelData((prev) => {
-      const allSelected = classNames.every((c) => prev.assignedClasses.includes(c));
+      const current = ensureArray(prev.assignedClasses);
+      const allSelected = classNames.every((c) => current.includes(c));
       const nextClasses = allSelected
-        ? prev.assignedClasses.filter((c) => !classNames.includes(c))
-        : Array.from(new Set([...prev.assignedClasses, ...classNames]));
+        ? current.filter((c) => !classNames.includes(c))
+        : Array.from(new Set([...current, ...classNames]));
       return { ...prev, assignedClasses: nextClasses };
     });
   };
@@ -319,8 +333,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     if (!quickRombelTeacher) return;
     setSubmitting(true);
     try {
+      const cleanClasses = ensureArray(quickRombelData.assignedClasses);
       await authService.updateUserProfile(quickRombelTeacher.uid, {
-        assignedClasses: quickRombelData.assignedClasses,
+        assignedClasses: cleanClasses,
         isHomeroom: quickRombelData.isHomeroom,
         homeroomClass: quickRombelData.isHomeroom ? quickRombelData.homeroomClass : '',
       });
@@ -328,7 +343,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
         'UPDATE_TEACHER_ROMBEL',
         'users',
         quickRombelTeacher.uid,
-        `Memperbarui penugasan rombel SD untuk ${quickRombelTeacher.displayName} (${quickRombelData.assignedClasses.join(', ') || 'Belum ada'})`
+        `Memperbarui penugasan rombel SD untuk ${quickRombelTeacher.displayName} (${cleanClasses.join(', ') || 'Belum ada'})`
       );
       showToast(`Penugasan rombel ${quickRombelTeacher.displayName} berhasil disimpan!`, 'success');
       setIsQuickRombelOpen(false);
@@ -340,16 +355,16 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     }
   };
 
-  // Target Rombel Modal Handlers (Configuring a specific SD class)
+  // Target Rombel Modal Handlers
   const handleOpenTargetRombel = (cls: SchoolClass) => {
     setTargetRombelClass(cls);
-    const homeroomTeacher = teachers.find(
-      (t) => t.isHomeroom && t.homeroomClass === cls.name
+    const homeroomTeacher = (teachers || []).find(
+      (t) => Boolean(t.isHomeroom) && t.homeroomClass === cls.name
     );
     setTargetRombelHomeroomUid(homeroomTeacher ? homeroomTeacher.uid : '');
 
-    const assignedTeachers = teachers
-      .filter((t) => (t.assignedClasses || []).includes(cls.name))
+    const assignedTeachers = (teachers || [])
+      .filter((t) => ensureArray(t.assignedClasses).includes(cls.name))
       .map((t) => t.uid);
     setTargetRombelTeacherUids(assignedTeachers);
     setIsTargetRombelOpen(true);
@@ -363,12 +378,12 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     try {
       for (const t of teachers) {
         let shouldUpdate = false;
-        let newIsHomeroom = t.isHomeroom;
+        let newIsHomeroom = Boolean(t.isHomeroom);
         let newHomeroomClass = t.homeroomClass || '';
-        let newAssignedClasses = [...(t.assignedClasses || [])];
+        let newAssignedClasses = [...ensureArray(t.assignedClasses)];
 
         const isNowHomeroom = t.uid === targetRombelHomeroomUid;
-        const isPreviouslyHomeroom = t.isHomeroom && t.homeroomClass === className;
+        const isPreviouslyHomeroom = Boolean(t.isHomeroom) && t.homeroomClass === className;
 
         if (isNowHomeroom && (!t.isHomeroom || t.homeroomClass !== className)) {
           newIsHomeroom = true;
@@ -421,12 +436,13 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
   const handleToggleSubject = (subjectName: string) => {
     setFormData((prev) => {
-      const exists = prev.assignedSubjects.includes(subjectName);
+      const current = ensureArray(prev.assignedSubjects);
+      const exists = current.includes(subjectName);
       return {
         ...prev,
         assignedSubjects: exists
-          ? prev.assignedSubjects.filter((s) => s !== subjectName)
-          : [...prev.assignedSubjects, subjectName],
+          ? current.filter((s) => s !== subjectName)
+          : [...current, subjectName],
       };
     });
   };
@@ -451,8 +467,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
           nip: formData.nip.trim(),
           phone: formData.phone.trim(),
           email: formData.email.trim(),
-          assignedClasses: formData.assignedClasses,
-          assignedSubjects: formData.assignedSubjects,
+          assignedClasses: ensureArray(formData.assignedClasses),
+          assignedSubjects: ensureArray(formData.assignedSubjects),
           isHomeroom: formData.isHomeroom,
           homeroomClass: formData.isHomeroom ? formData.homeroomClass : '',
           status: formData.status,
@@ -473,8 +489,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
           nip: formData.nip.trim(),
           phone: formData.phone.trim(),
           email: formData.email.trim(),
-          assignedClasses: formData.assignedClasses,
-          assignedSubjects: formData.assignedSubjects,
+          assignedClasses: ensureArray(formData.assignedClasses),
+          assignedSubjects: ensureArray(formData.assignedSubjects),
           isHomeroom: formData.isHomeroom,
           homeroomClass: formData.isHomeroom ? formData.homeroomClass : '',
         });
@@ -521,9 +537,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
         'DELETE_TEACHER',
         'users',
         teacherToDelete.uid,
-        `Menghapus akun guru: ${teacherToDelete.displayName} dari server`
+        `Menghapus akun guru: ${teacherToDelete.displayName}`
       );
-      showToast(`Akun guru "${teacherToDelete.displayName}" berhasil dihapus dari server`, 'success');
+      showToast(`Akun guru "${teacherToDelete.displayName}" berhasil dihapus`, 'success');
       setTeachers((prev) => prev.filter((t) => t.uid !== teacherToDelete.uid));
       setIsDeleteOpen(false);
       setTeacherToDelete(null);
@@ -537,12 +553,12 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     const headers = ['No', 'Nama Guru', 'NIP', 'Username', 'Wali Kelas', 'Rombel Diampu', 'Mapel Diampu', 'Status'];
     const rows = filteredTeachers.map((t, i) => [
       i + 1,
-      t.displayName,
+      t.displayName || '-',
       t.nip || '-',
-      t.username,
+      t.username || '-',
       t.isHomeroom ? t.homeroomClass || 'Ya' : 'Bukan',
-      (t.assignedClasses || []).join(', ') || '-',
-      (t.assignedSubjects || []).join(', ') || '-',
+      ensureArray(t.assignedClasses).join(', ') || '-',
+      ensureArray(t.assignedSubjects).join(', ') || '-',
       t.status === 'active' ? 'Aktif' : 'Nonaktif',
     ]);
 
@@ -557,14 +573,14 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
     const headers = ['No', 'Nama Guru', 'NIP', 'Username', 'Email', 'No Telepon', 'Wali Kelas', 'Rombel Diampu', 'Mapel Diampu', 'Status'];
     const rows = filteredTeachers.map((t, i) => [
       i + 1,
-      t.displayName,
+      t.displayName || '-',
       t.nip || '-',
-      t.username,
+      t.username || '-',
       t.email || '-',
       t.phone || '-',
       t.isHomeroom ? t.homeroomClass || 'Ya' : 'Bukan',
-      (t.assignedClasses || []).join(', ') || '-',
-      (t.assignedSubjects || []).join(', ') || '-',
+      ensureArray(t.assignedClasses).join(', ') || '-',
+      ensureArray(t.assignedSubjects).join(', ') || '-',
       t.status === 'active' ? 'Aktif' : 'Nonaktif',
     ]);
 
@@ -628,7 +644,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
           <div className="text-2xl font-extrabold text-slate-900 dark:text-white mt-2">
             {totalGuru}
           </div>
-          <p className="text-[11px] text-slate-400 mt-0.5">Terdaftar dalam Firestore</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Terdaftar dalam sistem</p>
         </div>
 
         <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs">
@@ -659,7 +675,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
             <Calendar className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-2">
-            {schedules.length}
+            {(schedules || []).length}
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5">Sesi mengajar mingguan</p>
         </div>
@@ -679,7 +695,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
             <Users className="w-3.5 h-3.5 text-blue-500" />
             <span>Daftar Guru & Akun</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-              {teachers.length}
+              {(teachers || []).length}
             </span>
           </button>
 
@@ -694,7 +710,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
             <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
             <span>Matriks Penugasan Rombel SD (Kelas 1 - 6)</span>
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300">
-              {classes.length} Rombel
+              {(classes || []).length} Rombel
             </span>
           </button>
         </div>
@@ -783,7 +799,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
           {/* Rombel Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredMatrixClasses.map((cls) => {
-              const gradeNum = cls.grade || cls.name.replace(/\D/g, '') || '1';
+              const nameStr = cls.name || cls.classId || '';
+              const gradeNum = cls.grade || nameStr.replace(/\D/g, '') || '1';
               const fase =
                 gradeNum === '1' || gradeNum === '2'
                   ? 'Fase A'
@@ -791,11 +808,11 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                   ? 'Fase B'
                   : 'Fase C';
 
-              const homeroomTeacher = teachers.find(
-                (t) => t.isHomeroom && t.homeroomClass === cls.name
+              const homeroomTeacher = (teachers || []).find(
+                (t) => Boolean(t.isHomeroom) && t.homeroomClass === cls.name
               );
-              const assignedTeachers = teachers.filter((t) =>
-                (t.assignedClasses || []).includes(cls.name)
+              const assignedTeachers = (teachers || []).filter((t) =>
+                ensureArray(t.assignedClasses).includes(cls.name)
               );
 
               return (
@@ -836,7 +853,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                       {homeroomTeacher ? (
                         <div className="flex items-center gap-2 mt-1">
                           <div className="w-6 h-6 rounded-lg bg-amber-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                            {homeroomTeacher.displayName.charAt(0)}
+                            {(homeroomTeacher.displayName || 'G').charAt(0)}
                           </div>
                           <div className="truncate">
                             <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
@@ -980,6 +997,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {filteredTeachers.map((teacher) => {
+                      const teacherClasses = ensureArray(teacher.assignedClasses);
+                      const teacherSubjects = ensureArray(teacher.assignedSubjects);
+
                       return (
                         <tr
                           key={teacher.uid}
@@ -989,7 +1009,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                           <td className="py-4">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center shrink-0 shadow-xs">
-                                {teacher.displayName.charAt(0)}
+                                {(teacher.displayName || 'G').charAt(0)}
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -1021,7 +1041,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                           <td className="py-4">
                             {teacher.isHomeroom && teacher.homeroomClass ? (
                               <span className="px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-bold text-[11px] border border-amber-200 dark:border-amber-800 inline-flex items-center gap-1.5">
-                                <Crown className="w-3 h-3 text-amber-600" />
+                                <Crown className="w-3.5 h-3.5 text-amber-600" />
                                 {teacher.homeroomClass}
                               </span>
                             ) : (
@@ -1031,9 +1051,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
                           {/* Assigned Classes */}
                           <td className="py-4">
-                            {teacher.assignedClasses && teacher.assignedClasses.length > 0 ? (
+                            {teacherClasses.length > 0 ? (
                               <div className="flex flex-wrap gap-1 max-w-xs">
-                                {teacher.assignedClasses.map((c) => (
+                                {teacherClasses.map((c) => (
                                   <span
                                     key={c}
                                     className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 text-[10px] font-semibold border border-blue-200/60 dark:border-blue-800/60"
@@ -1049,9 +1069,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
                           {/* Assigned Subjects */}
                           <td className="py-4">
-                            {teacher.assignedSubjects && teacher.assignedSubjects.length > 0 ? (
+                            {teacherSubjects.length > 0 ? (
                               <div className="flex flex-wrap gap-1 max-w-xs">
-                                {teacher.assignedSubjects.map((s) => (
+                                {teacherSubjects.map((s) => (
                                   <span
                                     key={s}
                                     className="px-2 py-0.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-[10px] font-semibold border border-purple-200/60 dark:border-purple-800/60"
@@ -1317,9 +1337,10 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
             <div className="space-y-2 max-h-56 overflow-y-auto p-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
               {groupedSDClasses.map((group) => {
                 const groupClassNames = group.classes.map((c) => c.name);
+                const currentAssigned = ensureArray(formData.assignedClasses);
                 const allChecked =
                   groupClassNames.length > 0 &&
-                  groupClassNames.every((c) => formData.assignedClasses.includes(c));
+                  groupClassNames.every((c) => currentAssigned.includes(c));
 
                 return (
                   <div
@@ -1343,7 +1364,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {group.classes.map((cls) => {
-                        const checked = formData.assignedClasses.includes(cls.name);
+                        const checked = currentAssigned.includes(cls.name);
                         return (
                           <label
                             key={cls.classId}
@@ -1369,9 +1390,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
               })}
             </div>
 
-            {formData.assignedClasses.length > 0 && (
+            {ensureArray(formData.assignedClasses).length > 0 && (
               <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                Dipilih: <span className="font-semibold text-blue-600 dark:text-blue-400">{formData.assignedClasses.length} rombel</span> ({formData.assignedClasses.join(', ')})
+                Dipilih: <span className="font-semibold text-blue-600 dark:text-blue-400">{ensureArray(formData.assignedClasses).length} rombel</span> ({ensureArray(formData.assignedClasses).join(', ')})
               </p>
             )}
           </div>
@@ -1382,8 +1403,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
               Penugasan Mata Pelajaran:
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 max-h-36 overflow-y-auto">
-              {subjects.map((sub) => {
-                const checked = formData.assignedSubjects.includes(sub.name);
+              {(subjects || []).map((sub) => {
+                const currentSubjects = ensureArray(formData.assignedSubjects);
+                const checked = currentSubjects.includes(sub.name);
                 return (
                   <label
                     key={sub.subjectId}
@@ -1483,13 +1505,16 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                   value={quickRombelData.homeroomClass}
                   onChange={(e) => {
                     const chosen = e.target.value;
-                    setQuickRombelData((prev) => ({
-                      ...prev,
-                      homeroomClass: chosen,
-                      assignedClasses: prev.assignedClasses.includes(chosen)
-                        ? prev.assignedClasses
-                        : [...prev.assignedClasses, chosen],
-                    }));
+                    setQuickRombelData((prev) => {
+                      const current = ensureArray(prev.assignedClasses);
+                      return {
+                        ...prev,
+                        homeroomClass: chosen,
+                        assignedClasses: current.includes(chosen)
+                          ? current
+                          : [...current, chosen],
+                      };
+                    });
                   }}
                   className="w-full px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
                 >
@@ -1518,7 +1543,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                 onClick={() =>
                   setQuickRombelData((prev) => ({
                     ...prev,
-                    assignedClasses: classes.map((c) => c.name),
+                    assignedClasses: (classes || []).map((c) => c.name),
                   }))
                 }
                 className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-100 font-bold cursor-pointer"
@@ -1530,8 +1555,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                 onClick={() =>
                   setQuickRombelData((prev) => ({
                     ...prev,
-                    assignedClasses: classes
-                      .filter((c) => ['1', '2'].includes(c.grade || c.name.replace(/\D/g, '')))
+                    assignedClasses: (classes || [])
+                      .filter((c) => ['1', '2'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
                       .map((c) => c.name),
                   }))
                 }
@@ -1544,8 +1569,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                 onClick={() =>
                   setQuickRombelData((prev) => ({
                     ...prev,
-                    assignedClasses: classes
-                      .filter((c) => ['3', '4'].includes(c.grade || c.name.replace(/\D/g, '')))
+                    assignedClasses: (classes || [])
+                      .filter((c) => ['3', '4'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
                       .map((c) => c.name),
                   }))
                 }
@@ -1558,8 +1583,8 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                 onClick={() =>
                   setQuickRombelData((prev) => ({
                     ...prev,
-                    assignedClasses: classes
-                      .filter((c) => ['5', '6'].includes(c.grade || c.name.replace(/\D/g, '')))
+                    assignedClasses: (classes || [])
+                      .filter((c) => ['5', '6'].includes(c.grade || (c.name ? c.name.replace(/\D/g, '') : '')))
                       .map((c) => c.name),
                   }))
                 }
@@ -1586,9 +1611,10 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
           <div className="space-y-2 max-h-64 overflow-y-auto p-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
             {groupedSDClasses.map((group) => {
               const groupClassNames = group.classes.map((c) => c.name);
+              const currentQuick = ensureArray(quickRombelData.assignedClasses);
               const allChecked =
                 groupClassNames.length > 0 &&
-                groupClassNames.every((c) => quickRombelData.assignedClasses.includes(c));
+                groupClassNames.every((c) => currentQuick.includes(c));
 
               return (
                 <div
@@ -1612,7 +1638,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                     {group.classes.map((cls) => {
-                      const checked = quickRombelData.assignedClasses.includes(cls.name);
+                      const checked = currentQuick.includes(cls.name);
                       return (
                         <label
                           key={cls.classId}
@@ -1638,9 +1664,9 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
             })}
           </div>
 
-          {quickRombelData.assignedClasses.length > 0 && (
+          {ensureArray(quickRombelData.assignedClasses).length > 0 && (
             <p className="text-[10px] text-slate-500 dark:text-slate-400">
-              Dipilih: <span className="font-semibold text-blue-600 dark:text-blue-400">{quickRombelData.assignedClasses.length} rombel</span> ({quickRombelData.assignedClasses.join(', ')})
+              Dipilih: <span className="font-semibold text-blue-600 dark:text-blue-400">{ensureArray(quickRombelData.assignedClasses).length} rombel</span> ({ensureArray(quickRombelData.assignedClasses).join(', ')})
             </p>
           )}
 
@@ -1702,7 +1728,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
               className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none"
             >
               <option value="">-- Belum Ditentukan / Tidak Ada --</option>
-              {teachers.map((t) => (
+              {(teachers || []).map((t) => (
                 <option key={t.uid} value={t.uid}>
                   {t.displayName} (NIP: {t.nip || '-'})
                 </option>
@@ -1719,7 +1745,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
               <div className="flex items-center gap-1.5 text-[10px]">
                 <button
                   type="button"
-                  onClick={() => setTargetRombelTeacherUids(teachers.map((t) => t.uid))}
+                  onClick={() => setTargetRombelTeacherUids((teachers || []).map((t) => t.uid))}
                   className="px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-100 font-bold cursor-pointer"
                 >
                   Pilih Semua Guru
@@ -1735,9 +1761,10 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
             </div>
 
             <div className="space-y-1.5 max-h-56 overflow-y-auto p-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-              {teachers.map((t) => {
+              {(teachers || []).map((t) => {
                 const isChecked = targetRombelTeacherUids.includes(t.uid);
                 const isHomeroomThisClass = t.uid === targetRombelHomeroomUid;
+                const subs = ensureArray(t.assignedSubjects);
 
                 return (
                   <label
@@ -1777,7 +1804,7 @@ export const TeachersPage: React.FC<TeachersPageProps> = ({ onSelectTab }) => {
                           )}
                         </div>
                         <p className="text-[10px] text-slate-400">
-                          NIP: {t.nip || '-'} • Mapel: {(t.assignedSubjects || []).join(', ') || '-'}
+                          NIP: {t.nip || '-'} • Mapel: {subs.join(', ') || '-'}
                         </p>
                       </div>
                     </div>
