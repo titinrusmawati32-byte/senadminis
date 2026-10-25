@@ -1,7 +1,9 @@
 import {
+  AlertCircle,
   BarChart3,
   Bot,
   Brain,
+  Check,
   CheckCircle2,
   Clock,
   Cloud,
@@ -11,9 +13,11 @@ import {
   FileText,
   GraduationCap,
   KeyRound,
+  Link2,
   Lock,
   LogIn,
   Moon,
+  RefreshCw,
   ShieldAlert,
   Sparkles,
   Sun,
@@ -27,6 +31,7 @@ import { Modal } from '../components/common/Modal';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { useTheme } from '../context/ThemeContext';
+import { apiClient } from '../services/apiClient';
 import { getFriendlyErrorMessage } from '../services/firebase';
 
 export const LoginPage: React.FC = () => {
@@ -42,6 +47,33 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isForgotOpen, setIsForgotOpen] = useState(false);
+
+  // Status koneksi cloud database di perangkat ini
+  const isDbConfigured = apiClient.isConfigured();
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [connectUrl, setConnectUrl] = useState('');
+  const [showConnectUrl, setShowConnectUrl] = useState(false);
+  const [savingConnect, setSavingConnect] = useState(false);
+
+  const handleSaveConnect = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = connectUrl.trim();
+    if (!clean.startsWith('http') || !clean.includes('/exec')) {
+      showToast('URL Google Apps Script tidak valid. Harus diawali https:// dan berakhiran /exec', 'error');
+      return;
+    }
+    setSavingConnect(true);
+    try {
+      localStorage.setItem('admin_guru_gas_url', clean);
+      showToast('Perangkat berhasil terhubung ke Database Cloud Google Sheets!', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 600);
+    } catch {
+      showToast('Gagal menyimpan konfigurasi pada perangkat.', 'error');
+      setSavingConnect(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -296,6 +328,29 @@ export const LoginPage: React.FC = () => {
               </p>
             </div>
 
+            {/* Status Peringatan jika database belum terhubung di perangkat HP */}
+            {!isDbConfigured && (
+              <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">Perangkat Ini Belum Terhubung ke Database</p>
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5 leading-relaxed">
+                      Akun Guru tidak dapat login sebelum perangkat ini terhubung ke database cloud sekolah.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsConnectModalOpen(true)}
+                  className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>Hubungkan Database di HP Ini</span>
+                </button>
+              </div>
+            )}
+
             {/* Error Banner jika ada */}
             {errorMessage && (
               <div className="mb-4 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2 animate-in fade-in">
@@ -450,6 +505,68 @@ export const LoginPage: React.FC = () => {
             </button>
           </div>
         </div>
+      </Modal>
+      {/* Modal Hubungkan Database di Perangkat HP Ini */}
+      <Modal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+        title="Hubungkan HP ke Database Sekolah"
+        subtitle="Masukkan URL Web App Google Apps Script sekali saja di perangkat ini"
+        maxWidth="md"
+      >
+        <form onSubmit={handleSaveConnect} className="space-y-4 text-xs text-[#172A45] dark:text-[#B4C1D4]">
+          <div className="p-3.5 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
+            <Link2 className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-relaxed">
+              Tempelkan <strong>URL Web App Google Apps Script</strong> sekolah Anda yang berakhiran <code className="font-mono font-bold text-blue-700 dark:text-blue-300">/exec</code>. Setelah disimpan, HP ini akan langsung terhubung ke database dan seluruh akun guru dapat segera login!
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-[#172A45] dark:text-[#F5F7FC] mb-1">
+              URL Web App Apps Script:
+            </label>
+            <div className="relative">
+              <input
+                type={showConnectUrl ? 'text' : 'password'}
+                placeholder="https://script.google.com/macros/s/.../exec"
+                value={connectUrl}
+                onChange={(e) => setConnectUrl(e.target.value)}
+                required
+                className="w-full px-3.5 py-2.5 pr-20 rounded-xl text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConnectUrl(!showConnectUrl)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                title={showConnectUrl ? 'Sembunyikan' : 'Tampilkan'}
+              >
+                {showConnectUrl ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-[#66758A] dark:text-[#B4C1D4] mt-1">
+              *URL ini disimpan secara privat di HP Anda dan disamarkan untuk menjaga kerahasiaan basis data.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsConnectModalOpen(false)}
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={savingConnect}
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {savingConnect ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              <span>Hubungkan & Mulai Login</span>
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
